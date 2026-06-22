@@ -7,7 +7,6 @@
 #include "log.h"
 #include "xdl.h"
 #include <cstring>
-#include <cstdint>
 #include <string>
 #include <ios>
 #include <iosfwd>
@@ -44,39 +43,20 @@ unsigned long get_module_base(const char * module_name) {
 }
 
 void * hack_thread(const char * game_data_dir) {
-    const unsigned long base_addr = get_module_base("libil2cpp.so");
-    if (base_addr == 0) {
-        LOGE("failed to locate libil2cpp base");
-        return nullptr;
-    }
-
-    const auto *metadata_ptr = reinterpret_cast<const uint8_t *>(
-            *reinterpret_cast<const uintptr_t *>(base_addr + GlobalMetadataAddr));
-    if (metadata_ptr == nullptr) {
-        LOGE("global metadata pointer is null");
-        return nullptr;
-    }
-
-    const uint32_t definitions_offset = *reinterpret_cast<const uint32_t *>(
-            metadata_ptr + GlobalMetadataDefinitionsOffset);
-    const uint32_t definitions_count = *reinterpret_cast<const uint32_t *>(
-            metadata_ptr + GlobalMetadataDefinitionsCountOffset);
-
-    const size_t dump_size = static_cast<size_t>(definitions_offset) +
-                             static_cast<size_t>(definitions_count);
-
-    const std::string outPath = std::string(game_data_dir) + "/files/global-metadata.dat";
-    std::ofstream outfile(outPath, std::ios::binary | std::ios::trunc);
+    unsigned long base_addr;
+    base_addr = get_module_base("libil2cpp.so");
+    
+    char * hack_addr = *(char **)(base_addr + GlobalMetadataAddr); 
+    auto outPath = std::string(game_data_dir).append("/files/global-metadata.dat");
+    std::ofstream outfile(outPath, std::ios::binary | std::ios::out);
     if (outfile.is_open()) {
-        outfile.write(reinterpret_cast<const char *>(metadata_ptr),
-                      static_cast<std::streamsize>(dump_size));
+        // deref once to get correct pointer to GM
+        const char * variable_data = reinterpret_cast < char * > (hack_addr);
+        int difinitionOffset_size = *(reinterpret_cast < const int * > (variable_data + 0x100));
+        int definitionsCount_size = *(reinterpret_cast < const int * > (variable_data + 0x104));
+        outfile.write(variable_data, difinitionOffset_size + definitionsCount_size);
         outfile.close();
-        LOGI("dumped global metadata to %s (%zu bytes)", outPath.c_str(), dump_size);
-    } else {
-        LOGE("failed to open metadata output file: %s", outPath.c_str());
     }
-
-    return nullptr;
 }
 
 void hack_start(const char *game_data_dir) {
